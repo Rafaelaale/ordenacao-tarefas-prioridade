@@ -1,0 +1,14 @@
+﻿.sf/
+.sfdx/
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+coverage/
+htmlcov/
+*.log
+.DS_Store
