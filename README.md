@@ -334,12 +334,15 @@ Este projeto demonstra conhecimentos em:
 - comunicação HTTP;
 - JSON;
 - arquitetura distribuída;
-- tratamento de responsabilidades entre sistemas;
+- tratamento das responsabilidades entre os sistemas;
 - Git;
 - documentação técnica.
 
 ## Autor
 
-**Rafael**
+**Rafael Alexandre Oliveira Araújo**
 
 Projeto desenvolvido para demonstrar integração entre Salesforce, Apex e Python aplicada a um problema real de priorização de tarefas.
+
+LinkedIn: https://linkedin.com/in/seu-perfil
+GitHub: https://github.com/Rafaelaale
