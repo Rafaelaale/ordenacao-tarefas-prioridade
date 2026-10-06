@@ -1,0 +1,125 @@
+public with sharing class TaskPriorityService {
+
+    public static void recalcular(List<Id> taskIds) {
+        if (taskIds == null || taskIds.isEmpty()) {
+            return;
+        }
+
+        Set<Id> idsValidos = new Set<Id>();
+
+        for (Id taskId : taskIds) {
+            if (taskId != null) {
+                idsValidos.add(taskId);
+            }
+        }
+
+        if (idsValidos.isEmpty()) {
+            return;
+        }
+
+        List<Task> tarefas = [
+            SELECT Id, Status, Priority, ActivityDate
+            FROM Task
+            WHERE Id IN :idsValidos
+        ];
+
+        List<TarefaPontuada> tarefasPontuadas = new List<TarefaPontuada>();
+
+        for (Task tarefa : tarefas) {
+            Integer pontuacao = calcularPontuacao(tarefa);
+            tarefasPontuadas.add(new TarefaPontuada(tarefa, pontuacao));
+
+            System.debug(
+                LoggingLevel.INFO,
+                'Tarefa ' + tarefa.Id +
+                ' calculada com pontuacao: ' + pontuacao
+            );
+        }
+
+        tarefasPontuadas.sort();
+
+        List<Resultado_Prioridade_Tarefa__c> resultadosAnteriores = [
+            SELECT Id
+            FROM Resultado_Prioridade_Tarefa__c
+            WHERE Task_Id__c IN :idsValidos
+        ];
+
+        if (!resultadosAnteriores.isEmpty()) {
+            delete resultadosAnteriores;
+        }
+
+        List<Resultado_Prioridade_Tarefa__c> novosResultados =
+            new List<Resultado_Prioridade_Tarefa__c>();
+
+        Integer ordem = 1;
+
+        for (TarefaPontuada tarefaPontuada : tarefasPontuadas) {
+            novosResultados.add(
+                new Resultado_Prioridade_Tarefa__c(
+                    Task_Id__c = String.valueOf(tarefaPontuada.tarefa.Id),
+                    Pontuacao__c = tarefaPontuada.pontuacao,
+                    Ordem_Recomendada__c = ordem,
+                    Data_Processamento__c = Datetime.now()
+                )
+            );
+
+            ordem++;
+        }
+
+        if (!novosResultados.isEmpty()) {
+            insert novosResultados;
+        }
+    }
+
+    private static Integer calcularPontuacao(Task tarefa) {
+        Integer pontuacao = 0;
+
+        if (tarefa.Status == 'Completed') {
+            return 0;
+        }
+
+        if (tarefa.ActivityDate != null) {
+            if (tarefa.ActivityDate < Date.today()) {
+                pontuacao += 40;
+            } else if (tarefa.ActivityDate == Date.today()) {
+                pontuacao += 30;
+            }
+        }
+
+        if (tarefa.Priority == 'High') {
+            pontuacao += 30;
+        } else if (tarefa.Priority == 'Normal') {
+            pontuacao += 15;
+        } else if (tarefa.Priority == 'Low') {
+            pontuacao += 5;
+        }
+
+        return pontuacao;
+    }
+
+    private class TarefaPontuada implements Comparable {
+        public Task tarefa;
+        public Integer pontuacao;
+
+        public TarefaPontuada(Task tarefa, Integer pontuacao) {
+            this.tarefa = tarefa;
+            this.pontuacao = pontuacao;
+        }
+
+        public Integer compareTo(Object outroObjeto) {
+            TarefaPontuada outraTarefa =
+                (TarefaPontuada) outroObjeto;
+
+            if (this.pontuacao > outraTarefa.pontuacao) {
+                return -1;
+            }
+
+            if (this.pontuacao < outraTarefa.pontuacao) {
+                return 1;
+            }
+
+            return String.valueOf(this.tarefa.Id)
+                .compareTo(String.valueOf(outraTarefa.tarefa.Id));
+        }
+    }
+}
