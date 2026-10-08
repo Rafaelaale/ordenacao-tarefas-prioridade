@@ -1,348 +1,91 @@
-﻿# Ordenação Automática de Tarefas por Prioridade
+# Ordenação Automática de Tarefas por Prioridade
 
-Projeto de portfólio que integra Salesforce, Apex e Python para recomendar automaticamente a ordem de execução de tarefas pendentes.
+## Objetivo
+Automatizar a recomendação de ordem de execução de tarefas no Salesforce, usando um serviço Python para calcular a pontuação de prioridade.
 
-> **Salesforce é o quadro de tarefas. Python só sugere a ordem.**
+## Problema que resolve
+Quando há várias tarefas pendentes, decidir manualmente qual executar primeiro é demorado e inconsistente. Este projeto automatiza essa decisão com base em critérios objetivos (prazo, atraso, prioridade e status).
 
-## Visão geral
-
-Usuários que trabalham com várias tarefas precisam decidir manualmente qual atividade deve ser executada primeiro. Esse processo pode causar atrasos e falta de padronização.
-
-Este projeto automatiza essa recomendação:
-
+## Como funciona a lógica de priorização
 1. Uma tarefa é criada ou atualizada no Salesforce.
-2. Um Trigger Apex identifica a alteração.
-3. Um Queueable Apex inicia o processamento assíncrono.
-4. O Salesforce envia as tarefas pendentes para uma API Python.
-5. A API calcula a pontuação e retorna somente os IDs ordenados.
-6. O Salesforce grava a pontuação e a ordem recomendada.
+2. O trigger `TaskPriorityTrigger` identifica a mudança e enfileira o processamento.
+3. `TaskPriorityPythonQueueable` consulta as tarefas abertas e envia os dados para a API Python via HTTP.
+4. A API Python calcula a pontuação de cada tarefa considerando prazo, atraso, tarefas do dia e prioridade, e retorna apenas a lista de IDs ordenada.
+5. O Salesforce grava o resultado no objeto `Resultado_Prioridade_Tarefa__c` (pontuação e ordem recomendada).
 
-## Arquitetura
-
-```mermaid
-flowchart LR
-    A[Task criada ou atualizada] --> B[TaskPriorityTrigger]
-    B --> C[TaskPriorityPythonQueueable]
-    C --> D[API Python /ordenar]
-    D --> E[Cálculo da pontuação]
-    E --> F[Retorno dos Task IDs]
-    F --> G[Resultado_Prioridade_Tarefa__c]
-```
-
-## Fluxo técnico
-
-```text
-Salesforce Task
-      |
-      v
-TaskPriorityTrigger
-      |
-      v
-Queueable Apex
-      |
-      | HTTP POST
-      v
-API Python
-      |
-      | task_ids ordenados
-      v
-Salesforce
-      |
-      v
-Resultado_Prioridade_Tarefa__c
-```
+Tarefas concluídas não entram na ordenação. A API não cria, atualiza nem exclui tarefas — ela só calcula e devolve a recomendação.
 
 ## Tecnologias
+Salesforce · Apex · SOQL · Trigger · Queueable Apex · API REST · Python · FastAPI · HTTP/JSON · Git · Salesforce CLI
 
-- Salesforce;
-- Apex;
-- SOQL;
-- Salesforce CLI;
-- Queueable Apex;
-- Apex Trigger;
-- API REST;
-- Python;
-- FastAPI;
-- HTTP/JSON;
-- Git;
-- PowerShell.
+## Arquitetura
+```
+Task (Salesforce)
+   -> TaskPriorityTrigger
+   -> Queueable Apex
+   -> HTTP POST para API Python
+   -> API retorna IDs ordenados
+   -> Resultado_Prioridade_Tarefa__c
+```
+- **Salesforce** é o sistema principal: armazena tarefas, status e resultados.
+- **Python** só recebe dados, aplica a regra de pontuação e devolve a ordem — sem acoplamento com a origem dos dados.
+- O uso de **Queueable Apex** mantém o trigger leve e isola o callout em um contexto assíncrono apropriado.
 
-## Componentes Salesforce
+## Testes realizados e resultado
+Teste com duas tarefas pendentes:
 
-### `TaskPriorityTrigger`
+| Tarefa | Situação | Pontuação | Ordem |
+|---|---|---|---|
+| 00TgL00000EVtmYUAT | Atrasada, prioridade High | 70 | 1 |
+| 00TgL00000EVoy9UAD | Para hoje, prioridade Normal | 45 | 2 |
 
-Executado após:
+Execução assíncrona validada: `Status: Completed`, `Erros: 0`. O resultado confirmou que uma tarefa atrasada e de alta prioridade é posicionada antes de uma tarefa normal do dia.
 
-- inserção de uma tarefa;
-- atualização de uma tarefa.
+## Prints / demonstração
+> Adicionar aqui prints do fluxo: criação da tarefa, job do Queueable em `AsyncApexJob` e registros em `Resultado_Prioridade_Tarefa__c`.
 
-A responsabilidade do Trigger é iniciar o processamento assíncrono sem realizar o callout diretamente.
-
-### `TaskPriorityPythonQueueable`
-
-Responsável por:
-
-- consultar tarefas abertas;
-- preparar os dados da integração;
-- realizar a chamada HTTP para a API Python;
-- receber a sequência recomendada de IDs;
-- limpar resultados anteriores;
-- calcular ou registrar a pontuação;
-- gravar os resultados no Salesforce.
-
-O uso de Queueable Apex evita a realização de callouts diretamente no contexto do Trigger.
-
-### `Resultado_Prioridade_Tarefa__c`
-
-Objeto utilizado para armazenar o resultado do processamento.
-
-Campos principais:
-
-| Campo | Finalidade |
-|---|---|
-| `Task_Id__c` | ID da tarefa processada |
-| `Pontuacao__c` | Pontuação calculada |
-| `Ordem_Recomendada__c` | Posição recomendada da tarefa |
-| `Data_Processamento__c` | Data e hora do processamento |
-
-## API Python
-
-A API recebe as tarefas abertas em formato JSON e retorna somente a sequência dos IDs.
-
-### Requisição
-
-```json
-{
-  "tasks": [
-    {
-      "id": "00TgL00000EVoy9UAD",
-      "status": "Not Started",
-      "due_date": "2026-10-06",
-      "priority": "Normal",
-      "customer_value": 0,
-      "task_type": "Teste prioridade normal para hoje",
-      "urgency": 0
-    }
-  ]
-}
+## Como executar / reproduzir
+**API Python:**
+```powershell
+cd python
+.\.venv\Scripts\Activate.ps1
+# executar conforme configuração de inference.py
 ```
 
-### Resposta
-
-```json
-{
-  "task_ids": [
-    "00TgL00000EVoy9UAD"
-  ]
-}
+**Salesforce:**
+```powershell
+cd salesforce
+sf data query --target-org estudo --query "SELECT Id, ApexClass.Name, Status, NumberOfErrors FROM AsyncApexJob WHERE ApexClass.Name = 'TaskPriorityPythonQueueable' ORDER BY CreatedDate DESC LIMIT 5" --result-format human
+sf data query --target-org estudo --query "SELECT Id, Task_Id__c, Pontuacao__c, Ordem_Recomendada__c FROM Resultado_Prioridade_Tarefa__c ORDER BY Ordem_Recomendada__c ASC" --result-format human
 ```
 
-A API não cria, atualiza ou exclui tarefas no Salesforce. Ela apenas calcula e retorna a recomendação.
+## Decisões técnicas e desafios
+- Separar o cálculo (Python) do armazenamento (Salesforce) reduziu o acoplamento entre os dois sistemas.
+- O resultado é gravado em um objeto próprio (`Resultado_Prioridade_Tarefa__c`), sem alterar os registros originais de `Task`.
+- Principal desafio: garantir que o callout acontecesse fora do contexto do trigger, resolvido com Queueable Apex.
+- Para produção, os próximos passos de segurança incluem: hospedagem estável com HTTPS, autenticação por token, variáveis de ambiente para segredos, monitoramento e retry.
 
-## Critérios de priorização
-
-A pontuação atual considera principalmente:
-
-- prazo da tarefa;
-- tarefas atrasadas;
-- tarefas para o dia atual;
-- prioridade Salesforce;
-- situação da tarefa.
-
-Tarefas concluídas não participam da ordenação.
-
-A arquitetura permite adicionar futuramente:
-
-- valor do cliente;
-- tipo da tarefa;
-- urgência;
-- quantidade de tarefas pendentes por usuário;
-- regras específicas de negócio.
-
-## Teste validado
-
-Foi realizado um teste com duas tarefas pendentes:
-
-| Ordem | Task ID | Situação | Pontuação |
-|---:|---|---|---:|
-| 1 | `00TgL00000EVtmYUAT` | Atrasada e prioridade High | 70 |
-| 2 | `00TgL00000EVoy9UAD` | Para hoje e prioridade Normal | 45 |
-
-Resultado persistido no Salesforce:
-
-```text
-Task 00TgL00000EVtmYUAT
-Pontuação: 70
-Ordem recomendada: 1
-
-Task 00TgL00000EVoy9UAD
-Pontuação: 45
-Ordem recomendada: 2
-```
-
-Esse teste confirmou que uma tarefa atrasada com prioridade alta é colocada antes de uma tarefa normal para o dia atual.
-
-## Validação da execução assíncrona
-
-O processamento foi executado por Queueable Apex com sucesso:
-
-```text
-Status: Completed
-Erros: 0
-```
-
-Fluxo validado:
-
-```text
-Task criada
-  -> Trigger acionado
-  -> Queueable enfileirado
-  -> API Python chamada
-  -> IDs ordenados retornados
-  -> Resultados gravados no Salesforce
-```
+## Próximas melhorias
+- Autenticação na API
+- Testes automatizados para o endpoint `/ordenar`
+- Mais critérios de pontuação (valor do cliente, urgência, volume por usuário)
+- Logs estruturados e retry para falhas temporárias
+- Interface para visualizar a ordem recomendada
+- Pipeline de testes no GitHub Actions
+- Documentação OpenAPI
 
 ## Estrutura do projeto
-
-```text
+```
 ordenacao-tarefas-prioridade/
 ├── docs/
 ├── python/
 │   └── inference.py
 ├── salesforce/
-│   ├── force-app/
-│   │   └── main/
-│   │       └── default/
-│   │           ├── classes/
-│   │           ├── objects/
-│   │           ├── remoteSiteSettings/
-│   │           └── triggers/
-│   └── sfdx-project.json
+│   └── force-app/main/default/{classes,objects,remoteSiteSettings,triggers}
 ├── .gitignore
 └── README.md
 ```
 
-## Execução local
-
-### API Python
-
-A API está localizada no diretório `python`.
-
-Entre na pasta:
-
-```powershell
-cd ..\python
-```
-
-Ative o ambiente virtual:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Execute a API conforme a configuração do arquivo `inference.py`.
-
-### Salesforce
-
-Entre na pasta do projeto Salesforce:
-
-```powershell
-cd ..\salesforce
-```
-
-Consulte os jobs do Queueable:
-
-```powershell
-sf data query --target-org estudo --query "SELECT Id, ApexClass.Name, Status, NumberOfErrors, CreatedDate, CompletedDate FROM AsyncApexJob WHERE ApexClass.Name = 'TaskPriorityPythonQueueable' ORDER BY CreatedDate DESC LIMIT 5" --result-format human
-```
-
-Consulte os resultados calculados:
-
-```powershell
-sf data query --target-org estudo --query "SELECT Id, Task_Id__c, Pontuacao__c, Ordem_Recomendada__c, Data_Processamento__c FROM Resultado_Prioridade_Tarefa__c ORDER BY Ordem_Recomendada__c ASC" --result-format human
-```
-
-## Decisões de arquitetura
-
-### Salesforce como sistema principal
-
-O Salesforce continua responsável por:
-
-- armazenar as tarefas;
-- controlar o status;
-- iniciar o processamento;
-- armazenar os resultados.
-
-### Python como serviço de recomendação
-
-O Python é responsável somente por:
-
-- receber os dados;
-- aplicar as regras de priorização;
-- devolver a sequência de IDs.
-
-Essa separação reduz o acoplamento entre o cálculo e o sistema de origem.
-
-### Processamento assíncrono
-
-O uso de Queueable Apex permite que o Trigger permaneça leve e que a chamada externa seja realizada em um contexto apropriado para callouts.
-
-### Resultados separados das tarefas
-
-A recomendação é armazenada no objeto `Resultado_Prioridade_Tarefa__c`, sem alterar diretamente os registros originais de `Task`.
-
-## Segurança e produção
-
-Durante o desenvolvimento, a API foi disponibilizada temporariamente para permitir a comunicação com o Salesforce.
-
-Para um ambiente de produção, recomenda-se:
-
-- hospedar a API em uma URL estável;
-- utilizar HTTPS permanente;
-- adicionar autenticação por token;
-- armazenar segredos em variáveis de ambiente;
-- configurar monitoramento;
-- registrar erros e tentativas de integração;
-- implementar timeout e política de retry;
-- evitar exposição de dados sensíveis.
-
-## Próximas melhorias
-
-- adicionar autenticação na API;
-- criar testes automatizados para o endpoint `/ordenar`;
-- ampliar os critérios de pontuação;
-- adicionar logs estruturados;
-- implementar retry para falhas temporárias;
-- criar uma interface para visualizar a ordem recomendada;
-- adicionar pipeline de testes no GitHub Actions;
-- disponibilizar a API em ambiente de hospedagem estável;
-- criar documentação OpenAPI detalhada.
-
-## Competências demonstradas
-
-Este projeto demonstra conhecimentos em:
-
-- desenvolvimento Salesforce;
-- Apex;
-- Triggers;
-- Queueable Apex;
-- SOQL;
-- processamento assíncrono;
-- integração REST;
-- Python;
-- FastAPI;
-- comunicação HTTP;
-- JSON;
-- arquitetura distribuída;
-- tratamento das responsabilidades entre os sistemas;
-- Git;
-- documentação técnica.
-
 ## Autor
-
-**Rafael Alexandre Oliveira Araújo**
-
-Projeto desenvolvido para demonstrar integração entre Salesforce, Apex e Python aplicada a um problema real de priorização de tarefas.
-
-LinkedIn: https://linkedin.com/in/seu-perfil
-GitHub: https://github.com/Rafaelaale
+Rafael Alexandre Oliveira Araújo
+LinkedIn: [linkedin.com/in/rafael-araujo-aa10a4232](https://www.linkedin.com/in/rafael-araujo-aa10a4232/) · GitHub: [github.com/Rafaelaale](https://github.com/Rafaelaale)
